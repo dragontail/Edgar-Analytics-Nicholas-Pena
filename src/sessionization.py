@@ -70,22 +70,23 @@ def readLogs(file, inactivityPeriod):
 			sessionsToRemove = checkTimes(expirations, currentTime, inactivityPeriod)
 
 			for user in sessionsToRemove:
-				userSessions.append(user)
+				userSessions.append((user[1], user[0], user[2], str(user[3]), str(user[4])))
 
 		line = logs.readline()
 		previousTime = currentTime
 
-	sessionsToRemove = checkTimes(expirations, currentTime + timedelta(seconds = inactivityPeriod), inactivityPeriod)
+	sessionsToRemove = checkTimes(expirations, currentTime + timedelta(seconds = inactivityPeriod + 1), inactivityPeriod)
+
 	for user in sessionsToRemove:
-		userSessions.append(user)
+		userSessions.append((user[1], user[0], user[2], str(user[3]), str(user[4])))
 
 	return userSessions
 
 '''
-	check our current sessions against the current time
+	check our current sessions' expirations against the current timestamp
 	if the inactivity period has passed, then session has ended
 	return: a list of any sessions that have ended (ip-specific)
-			updated version of times
+			updated version of expirations
 '''
 def checkTimes(expirations, timestamp, inactivityPeriod):
 	sessionsToRemove = []
@@ -94,17 +95,35 @@ def checkTimes(expirations, timestamp, inactivityPeriod):
 		start = expirations[ip][0]
 		last = expirations[ip][1]
 
-		if timestamp >= last + timedelta(seconds = inactivityPeriod):
+		if timestamp > last + timedelta(seconds = inactivityPeriod):
 			difference = (last - start).seconds + 1
 			start = datetime.strftime(start, "%d-%b-%Y %H:%M:%S")
 			last = datetime.strftime(last, "%d-%b-%Y %H:%M:%S")
-			sessionsToRemove.append((ip, start, last, difference, expirations[ip][2]))
+
+			heapq.heappush(sessionsToRemove, (start, ip, last, difference, expirations[ip][2]))
+			# sessionsToRemove.append((ip, start, last, difference, expirations[ip][2]))
 
 	for user in sessionsToRemove:
-		expirations.pop(user[0])
+		expirations.pop(user[1])
 
 	return sessionsToRemove
 
+'''
+
+'''
+def writeOutput(logs, outputFile):
+	try:
+		output = open(outputFile, 'w')
+	except IOError:
+		print("There was an error opening the file.")
+		return
+
+	# loop through the results, in increasing order of department #
+	for user in logs:
+		line = ",".join(list(user))
+		output.write(line + "\n")
+
+	output.close()
 
 def main():
 	if len(argv) != 4:
@@ -119,8 +138,7 @@ def main():
 
 	logs = readLogs(logFile, inactivityPeriod)
 	
-	for log in logs:
-		print "User: ", log
+	writeOutput(logs, outputFile)
 
 if __name__ == "__main__":
 	main()
