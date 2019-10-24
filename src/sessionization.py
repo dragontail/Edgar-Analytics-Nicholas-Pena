@@ -17,10 +17,12 @@ def readInactivity(file):
 
 	inactivityPeriod = "".join(inactivityFile.readline().split())
 
+	inactivityFile.close()
 	return int(inactivityPeriod)
 
 '''
-	read a log of all the users accessing EDGAR database=
+	read a log of all the users accessing EDGAR database
+	return: a list of tuples describing each of the user sessions
 '''
 def readLogs(file, inactivityPeriod):
 	try:
@@ -32,7 +34,6 @@ def readLogs(file, inactivityPeriod):
 	header = logs.readline().split(",")
 
 	columns = {}
-	sessions = {}
 	expirations = {}
 	userSessions = []
 
@@ -96,12 +97,12 @@ def checkTimes(expirations, timestamp, inactivityPeriod):
 		last = expirations[ip][1]
 
 		if timestamp > last + timedelta(seconds = inactivityPeriod):
-			difference = (last - start).seconds + 1
+			duration = (last - start).seconds + 1
 			start = datetime.strftime(start, "%d-%b-%Y %H:%M:%S")
 			last = datetime.strftime(last, "%d-%b-%Y %H:%M:%S")
 
-			heapq.heappush(sessionsToRemove, (start, ip, last, difference, expirations[ip][2]))
-			# sessionsToRemove.append((ip, start, last, difference, expirations[ip][2]))
+			heapq.heappush(sessionsToRemove, (start, ip, last, duration, expirations[ip][2]))
+			# sessionsToRemove.append((ip, start, last, duration, expirations[ip][2]))
 
 	for user in sessionsToRemove:
 		expirations.pop(user[1])
@@ -109,7 +110,7 @@ def checkTimes(expirations, timestamp, inactivityPeriod):
 	return sessionsToRemove
 
 '''
-
+	write to a file each of the user sessions
 '''
 def writeOutput(logs, outputFile):
 	try:
@@ -118,7 +119,6 @@ def writeOutput(logs, outputFile):
 		print("There was an error opening the file.")
 		return
 
-	# loop through the results, in increasing order of department #
 	for user in logs:
 		line = ",".join(list(user))
 		output.write(line + "\n")
