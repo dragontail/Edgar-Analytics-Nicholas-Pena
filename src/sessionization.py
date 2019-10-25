@@ -142,20 +142,6 @@ def checkTimes(sessions, timestamp, inactivityPeriod):
 	return sessionsToRemove
 
 
-# def writeOutput(sessions, outputFile):
-# 	try:
-# 		output = open(outputFile, 'w')
-# 	except IOError:
-# 		print("There was an error opening the file.")
-# 		return
-
-# 	for session in sessions:
-# 		line = ",".join(list(session))
-# 		output.write(line + "\n")
-
-# 	output.close()
-
-
 def main():
 	if len(argv) != 4:
 		print("Usage: ./sessionization.py [logFile inactivityFile outputFile]")
