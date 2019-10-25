@@ -4,13 +4,17 @@ from session import Session
 import csv
 import heapq
 
-def readInactivity(file):
+def openFile(file, mode):
 	try:
-		inactivityFile = open(file)
+		f = open(file, mode)
 	except IOError:
 		print("Unable to open file:", file)
 		return
 
+	return f
+
+def readInactivity(file):
+	inactivityFile = openFile(file, "r")
 	inactivityPeriod = "".join(inactivityFile.readline().split())
 	inactivityFile.close()
 
@@ -22,11 +26,7 @@ def readInactivity(file):
 	return: a list of tuples describing each of the user sessions
 '''
 def readLogs(file):
-	try:
-		logFile = open(file)
-	except IOError:
-		print("Unable to open file:", file)
-		return []
+	logFile = openFile(file, "r")
 
 	header = logFile.readline().split(",")
 	columns = getColumnPositions(header)
@@ -64,9 +64,11 @@ def getColumnPositions(header):
 	determines each user session from the given logs and inactivityPeriod
 
 '''
-def findSessions(logs, inactivityPeriod):
+def findSessions(logs, inactivityPeriod, outputFile):
 	sessions = {}
 	userSessions = []
+
+	output = openFile(outputFile, "w")
 
 	currentTime, previousTime = 0, -1
 
@@ -90,6 +92,8 @@ def findSessions(logs, inactivityPeriod):
 			for session in sessionsToRemove:
 				session = (session[1], 
 					session[0], session[2], session[3], session[4])
+
+				output.write(",".join(list(session)) + "\n")
 				userSessions.append(session)
 
 		previousTime = currentTime
@@ -101,6 +105,7 @@ def findSessions(logs, inactivityPeriod):
 
 	for session in sessionsToRemove:
 		session = (session[1], session[0], session[2], session[3], session[4])
+		output.write(",".join(list(session)) + "\n")
 		userSessions.append(session)
 
 	return userSessions
@@ -137,18 +142,18 @@ def checkTimes(sessions, timestamp, inactivityPeriod):
 	return sessionsToRemove
 
 
-def writeOutput(sessions, outputFile):
-	try:
-		output = open(outputFile, 'w')
-	except IOError:
-		print("There was an error opening the file.")
-		return
+# def writeOutput(sessions, outputFile):
+# 	try:
+# 		output = open(outputFile, 'w')
+# 	except IOError:
+# 		print("There was an error opening the file.")
+# 		return
 
-	for session in sessions:
-		line = ",".join(list(session))
-		output.write(line + "\n")
+# 	for session in sessions:
+# 		line = ",".join(list(session))
+# 		output.write(line + "\n")
 
-	output.close()
+# 	output.close()
 
 
 def main():
@@ -162,8 +167,8 @@ def main():
 
 	inactivityPeriod = readInactivity(inactivityFile)
 	logs = readLogs(logFile)
-	sessions = findSessions(logs, inactivityPeriod)
-	writeOutput(sessions, outputFile)
+	sessions = findSessions(logs, inactivityPeriod, outputFile)
+	# writeOutput(sessions, outputFile)
 
 if __name__ == "__main__":
 	main()

@@ -29,8 +29,9 @@ class TestLogFunctions(TestCase):
 	def testFindSessions(self):
 		logs = readLogs("./test_files/logs.csv")
 		inactivityPeriod = readInactivity("./test_files/inactivity_period.txt")
-
-		sessions = findSessions(logs, inactivityPeriod)
+		outputFile = "./test_files/output.txt"
+		sessions = findSessions(logs, inactivityPeriod, outputFile)
+		
 		return self.assertEqual(sessions, [(
 				"101.81.133.jja", 
 				"2017-06-30 00:00:00",
