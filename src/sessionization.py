@@ -1,129 +1,146 @@
 from sys import argv
-import csv
 from datetime import *
-from time import mktime
+from session import Session
+import csv
 import heapq
 
-'''
-	read a file to obtain the inactivity period for sessions
-	return: an int representing the min inactivity time
-'''
-def readInactivity(file):
+def openFile(file, mode):
 	try:
-		inactivityFile = open(file)
+		f = open(file, mode)
 	except IOError:
 		print("Unable to open file:", file)
 		return
 
-	inactivityPeriod = "".join(inactivityFile.readline().split())
+	return f
 
+def readInactivity(file):
+	inactivityFile = openFile(file, "r")
+	inactivityPeriod = "".join(inactivityFile.readline().split())
 	inactivityFile.close()
+
 	return int(inactivityPeriod)
+
 
 '''
 	read a log of all the users accessing EDGAR database
 	return: a list of tuples describing each of the user sessions
 '''
-def readLogs(file, inactivityPeriod):
-	try:
-		logs = open(file)
-	except IOError:
-		print("Unable to open file:", file)
-		return
+def readLogs(file):
+	logFile = openFile(file, "r")
 
-	header = logs.readline().split(",")
+	header = logFile.readline().split(",")
+	columns = getColumnPositions(header)
 
+	ip, date, time, cik, accession, extention = 0, 0, 0, 0, 0, 0
+	logs = []
+
+	line = logFile.readline()
+	while line:
+		for fields in csv.reader([line], skipinitialspace = True):
+			ip = fields[columns["ip"]]
+			date = fields[columns["date"]]
+			time = fields[columns["time"]]
+			timestamp = datetime.strptime(date + " " + time, "%Y-%m-%d %H:%M:%S")
+			cik = fields[columns["cik"]]
+			accession = fields[columns["accession"]]
+			extention = fields[columns["extention"]]
+
+			session = Session(ip, timestamp, cik, accession, extention)
+
+		logs.append(session)
+		line = logFile.readline()
+
+	return logs
+
+
+def getColumnPositions(header):
 	columns = {}
-	expirations = {}
-	userSessions = []
-
 	for i in range(len(header)):
 		columns.setdefault(header[i], i)
 
-	line = logs.readline()
+	return columns
 
-	ip, date, time, cik, accession, extention = 0, 0, 0, 0, 0, 0
+'''
+	determines each user session from the given logs and inactivityPeriod
 
-	currentTime = 0
-	previousTime = -1
-	while line:
-		for fields in csv.reader([line], skipinitialspace = True):
-			try:
-				ip = fields[columns["ip"]]
-				date = fields[columns["date"]]
-				time = fields[columns["time"]]
-				timestamp = datetime.strptime(date + " " + time, "%Y-%m-%d %H:%M:%S")
-				cik = fields[columns["cik"]]
-				accession = fields[columns["accession"]]
-				extention = fields[columns["extention"]]
-			except TypeError:
-				print("There was an error in your data.")
-				continue
+'''
+def findSessions(logs, inactivityPeriod, outputFile):
+	sessions = {}
+	userSessions = []
 
-		currentTime = timestamp
-		if ip in expirations:
-			expirations[ip] = (expirations[ip][0], timestamp, expirations[ip][2] + 1)
+	output = openFile(outputFile, "w")
+
+	currentTime, previousTime = 0, -1
+
+	for log in logs:
+		recentTime = log.timestamp
+		startTime = log.timestamp
+		numberAccesses = 1
+
+		if log.ip in sessions:
+			numberAccesses = sessions[log.ip][2]
+			sessions[log.ip] = (sessions[log.ip][0], 
+				recentTime, 
+				numberAccesses + 1)
 		else:
-			expirations[ip] = (timestamp, timestamp, 1)
+			sessions[log.ip] = (startTime, recentTime, numberAccesses)
 
-		if previousTime != currentTime:
-			currentTime = timestamp
-			sessionsToRemove = checkTimes(expirations, currentTime, inactivityPeriod)
+		if previousTime != recentTime:
+			recentTime = log.timestamp
+			sessionsToRemove = checkTimes(sessions, recentTime, inactivityPeriod)
 
-			for user in sessionsToRemove:
-				userSessions.append((user[1], user[0], user[2], str(user[3]), str(user[4])))
+			for session in sessionsToRemove:
+				session = (session[1], 
+					session[0], session[2], session[3], session[4])
 
-		line = logs.readline()
+				output.write(",".join(list(session)) + "\n")
+				userSessions.append(session)
+
 		previousTime = currentTime
+		currentTime = recentTime
 
-	sessionsToRemove = checkTimes(expirations, currentTime + timedelta(seconds = inactivityPeriod + 1), inactivityPeriod)
+	sessionsToRemove = checkTimes(sessions, 
+		currentTime + timedelta(seconds = inactivityPeriod + 1), 
+		inactivityPeriod)
 
-	for user in sessionsToRemove:
-		userSessions.append((user[1], user[0], user[2], str(user[3]), str(user[4])))
+	for session in sessionsToRemove:
+		session = (session[1], session[0], session[2], session[3], session[4])
+		output.write(",".join(list(session)) + "\n")
+		userSessions.append(session)
 
 	return userSessions
 
+
 '''
-	check our current sessions' expirations against the current timestamp
+	check our current sessions' last access times against the current timestamp
 	if the inactivity period has passed, then session has ended
+		sessions: a dictionary that's structured as follows:
+		{
+			ip : (firstAccessTime, mostRecentAccessTime, numberAccesses)
+		}
 	return: a list of any sessions that have ended (ip-specific)
-			updated version of expirations
+			updated version of sessions
 '''
-def checkTimes(expirations, timestamp, inactivityPeriod):
+def checkTimes(sessions, timestamp, inactivityPeriod):
 	sessionsToRemove = []
 
-	for ip in expirations:
-		start = expirations[ip][0]
-		last = expirations[ip][1]
+	for ip in sessions:
+		start = sessions[ip][0]
+		last = sessions[ip][1]
 
 		if timestamp > last + timedelta(seconds = inactivityPeriod):
-			duration = (last - start).seconds + 1
-			start = datetime.strftime(start, "%d-%b-%Y %H:%M:%S")
-			last = datetime.strftime(last, "%d-%b-%Y %H:%M:%S")
+			duration = str((last - start).seconds + 1)
+			start = datetime.strftime(start, "%Y-%m-%d %H:%M:%S")
+			last = datetime.strftime(last, "%Y-%m-%d %H:%M:%S")
 
-			heapq.heappush(sessionsToRemove, (start, ip, last, duration, expirations[ip][2]))
-			# sessionsToRemove.append((ip, start, last, duration, expirations[ip][2]))
+			heapq.heappush(sessionsToRemove, 
+				(start, ip, last, duration, str(sessions[ip][2])))
 
 	for user in sessionsToRemove:
-		expirations.pop(user[1])
+		sessions.pop(user[1])
 
 	return sessionsToRemove
 
-'''
-	write to a file each of the user sessions
-'''
-def writeOutput(logs, outputFile):
-	try:
-		output = open(outputFile, 'w')
-	except IOError:
-		print("There was an error opening the file.")
-		return
-
-	for user in logs:
-		line = ",".join(list(user))
-		output.write(line + "\n")
-
-	output.close()
 
 def main():
 	if len(argv) != 4:
@@ -135,10 +152,9 @@ def main():
 	outputFile = argv[3].rstrip()
 
 	inactivityPeriod = readInactivity(inactivityFile)
-
-	logs = readLogs(logFile, inactivityPeriod)
-	
-	writeOutput(logs, outputFile)
+	logs = readLogs(logFile)
+	sessions = findSessions(logs, inactivityPeriod, outputFile)
+	# writeOutput(sessions, outputFile)
 
 if __name__ == "__main__":
 	main()
